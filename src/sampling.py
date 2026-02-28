@@ -8,15 +8,18 @@ from .config import SamplingConfig
 
 def generate_separation_vectors(
     config: SamplingConfig,
+    n_total: int = 0,
     rng: np.random.Generator | None = None
 ) -> NDArray:
     """Generate (r1, r2) separation vector pairs for 3-point correlators.
 
     Samples separation vectors with oversampling of special geometric configurations
-    (equilateral, squeezed, collinear).
+    (equilateral, squeezed, collinear).  If n_total is specified and the grid-based
+    sampling produces fewer vectors, additional random pairs are generated to fill.
 
     Args:
         config: Sampling configuration
+        n_total: Minimum total vectors to produce (0 = no minimum)
         rng: Random number generator (default: new Generator)
 
     Returns:
@@ -27,30 +30,31 @@ def generate_separation_vectors(
 
     vectors = []
 
-    # Standard uniform sampling
-    n_standard = int(config.n_angles * len(config.separation_grid))
-
+    # Standard grid-based sampling
     for r1_mag in config.separation_grid:
         for angle_idx in range(config.n_angles):
             angle1 = 2 * np.pi * angle_idx / config.n_angles
             r1 = np.array([r1_mag * np.cos(angle1), r1_mag * np.sin(angle1)])
 
-            # Sample r2 uniformly
             r2_mag = rng.choice(config.separation_grid)
             angle2 = rng.uniform(0, 2 * np.pi)
             r2 = np.array([r2_mag * np.cos(angle2), r2_mag * np.sin(angle2)])
 
             vectors.append(np.stack([r1, r2]))
 
-    # Oversample special geometries
+    n_standard = len(vectors)
+
+    # Oversample special geometries (at least geometry_oversample ratio)
     n_special = int(n_standard * (config.geometry_oversample - 1))
+    # If n_total is set, ensure at least half the extra budget goes to special geometries
+    if n_total > 0 and n_standard + n_special < n_total:
+        n_special = max(n_special, (n_total - n_standard) // 2)
 
     for _ in range(n_special):
         geom = rng.choice(config.emphasize_geometries)
         r_mag = rng.choice(config.separation_grid)
 
         if geom == 'equilateral':
-            # Equilateral triangle: |r1| = |r2| = |r2 - r1|
             angle1 = rng.uniform(0, 2 * np.pi)
             r1 = np.array([r_mag * np.cos(angle1), r_mag * np.sin(angle1)])
             r2 = np.array([
@@ -58,30 +62,38 @@ def generate_separation_vectors(
                 r_mag * np.sin(angle1 + 2*np.pi/3)
             ])
         elif geom == 'squeezed':
-            # Squeezed: r1 ≈ r2 (small angle between them)
             angle1 = rng.uniform(0, 2 * np.pi)
-            delta_angle = rng.uniform(-np.pi/8, np.pi/8)  # Small angle variation
+            delta_angle = rng.uniform(-np.pi/8, np.pi/8)
             r1 = np.array([r_mag * np.cos(angle1), r_mag * np.sin(angle1)])
             r2 = np.array([
                 r_mag * np.cos(angle1 + delta_angle),
                 r_mag * np.sin(angle1 + delta_angle)
             ])
         elif geom == 'collinear':
-            # Collinear: r1 and r2 parallel or antiparallel
             angle = rng.uniform(0, 2 * np.pi)
             r1_mag_local = rng.choice(config.separation_grid)
             r2_mag_local = rng.choice(config.separation_grid)
 
-            if rng.random() < 0.5:  # Parallel
+            if rng.random() < 0.5:
                 r1 = np.array([r1_mag_local * np.cos(angle), r1_mag_local * np.sin(angle)])
                 r2 = np.array([r2_mag_local * np.cos(angle), r2_mag_local * np.sin(angle)])
-            else:  # Antiparallel
+            else:
                 r1 = np.array([r1_mag_local * np.cos(angle), r1_mag_local * np.sin(angle)])
                 r2 = np.array([
                     r2_mag_local * np.cos(angle + np.pi),
                     r2_mag_local * np.sin(angle + np.pi)
                 ])
 
+        vectors.append(np.stack([r1, r2]))
+
+    # Fill remaining with random pairs if we haven't hit n_total
+    while len(vectors) < n_total:
+        r1_mag = rng.choice(config.separation_grid)
+        r2_mag = rng.choice(config.separation_grid)
+        angle1 = rng.uniform(0, 2 * np.pi)
+        angle2 = rng.uniform(0, 2 * np.pi)
+        r1 = np.array([r1_mag * np.cos(angle1), r1_mag * np.sin(angle1)])
+        r2 = np.array([r2_mag * np.cos(angle2), r2_mag * np.sin(angle2)])
         vectors.append(np.stack([r1, r2]))
 
     return np.array(vectors)

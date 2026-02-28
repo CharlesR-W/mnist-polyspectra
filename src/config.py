@@ -53,7 +53,7 @@ class PolyspectraConfig:
     use_fourier: bool = True
     use_wavelet: bool = True
     wavelet_family: str = 'db4'
-    n_wavelet_scales: int = 4
+    n_wavelet_scales: int = 3
     bispectrum_slices: list[str] = field(
         default_factory=lambda: ['equilateral', 'squeezed', 'folded']
     )

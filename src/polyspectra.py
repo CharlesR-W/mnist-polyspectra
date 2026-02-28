@@ -54,8 +54,10 @@ def compute_power_spectrum(
         method='linear', fill_value=0.0
     )
 
-    # Compute 2D FFT
-    P_k_2d = np.abs(np.fft.fftshift(np.fft.fft2(C2_grid)))**2
+    # Compute 2D FFT: P(k) = FT[C₂(r)] by Wiener-Khinchin
+    # C₂ is real but may not be perfectly symmetric after interpolation,
+    # so take real part (imaginary should be ~0 for well-sampled C₂)
+    P_k_2d = np.real(np.fft.fftshift(np.fft.fft2(C2_grid)))
     k_x = np.fft.fftshift(np.fft.fftfreq(grid_size, d=(x_grid[1] - x_grid[0])))
     k_y = np.fft.fftshift(np.fft.fftfreq(grid_size, d=(y_grid[1] - y_grid[0])))
 
@@ -121,7 +123,7 @@ def compute_bispectrum(
     r12_diff = np.linalg.norm(r2_vectors - r1_vectors, axis=1)
 
     # Find approximately equilateral configurations
-    equilateral_tol = 0.3  # 30% tolerance
+    equilateral_tol = 0.45  # 45% tolerance (oversampled configs are exact)
     equilateral_mask = (
         np.abs(r1_mag - r2_mag) / (r1_mag + 1e-6) < equilateral_tol
     ) & (
@@ -156,14 +158,15 @@ def compute_bispectrum(
         }
 
     # Full 2D bispectrum in (r1, r2) plane (simplified projection)
-    # Grid r1 and r2 magnitudes
+    # Grid r1 and r2 magnitudes - use coarser grid matching data density
     max_r = max(np.max(r1_mag), np.max(r2_mag))
-    r_grid = np.linspace(0, max_r, 32)
+    n_bins = 16
+    r_grid = np.linspace(0, max_r, n_bins)
     R1, R2 = np.meshgrid(r_grid, r_grid)
 
     # Average C3 over angles for each (|r1|, |r2|)
-    B_2d = np.zeros((32, 32))
-    counts = np.zeros((32, 32))
+    B_2d = np.zeros((n_bins, n_bins))
+    counts = np.zeros((n_bins, n_bins))
 
     for i in range(len(C3_values)):
         r1_idx = np.argmin(np.abs(r_grid - r1_mag[i]))
@@ -226,11 +229,11 @@ def compute_wavelet_spectrum(
 
     for i, coeff_level in enumerate(coeffs):
         if i == 0:
-            # Approximation coefficients
+            # Approximation coefficients (coarsest scale)
             power = np.mean(np.abs(coeff_level)**2)
-            scale = 2**config.n_wavelet_scales
+            scale = 2**(config.n_wavelet_scales + 1)
         else:
-            # Detail coefficients (cH, cV, cD)
+            # Detail coefficients (cH, cV, cD) at level n_wavelet_scales - i + 1
             cH, cV, cD = coeff_level
             power = np.mean(np.abs(cH)**2 + np.abs(cV)**2 + np.abs(cD)**2)
             scale = 2**(config.n_wavelet_scales - i + 1)

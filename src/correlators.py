@@ -144,9 +144,11 @@ def compute_connected_3point(
 
     image_shape = images.shape[1:]
 
-    # Generate separation vector pairs
-    separation_pairs = generate_separation_vectors(sampling_config, rng)
-    # Subsample to match n_configurations
+    # Generate separation vector pairs (at least n_configurations)
+    separation_pairs = generate_separation_vectors(
+        sampling_config, n_total=config.n_configurations, rng=rng
+    )
+    # Subsample if we generated more than requested
     if len(separation_pairs) > config.n_configurations:
         indices = rng.choice(len(separation_pairs), config.n_configurations, replace=False)
         separation_pairs = separation_pairs[indices]
